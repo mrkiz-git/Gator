@@ -1,13 +1,17 @@
 package main
 
 import (
-	"fmt"
+	"database/sql"
 	"log"
 	"mrkiz-git/gator/internal/config"
+	"mrkiz-git/gator/internal/database"
 	"os"
+
+	_ "github.com/lib/pq"
 )
 
 type state struct {
+	db  *database.Queries
 	cfg *config.Config
 }
 
@@ -17,8 +21,15 @@ func main() {
 		log.Fatalf("error reading config: %v", err)
 	}
 
-	// cretae a pointer to state, every time programState w be passed, it will be passed to *state
+	db, err := sql.Open("postgres", cfg.DBURL)
+	if err != nil {
+		log.Fatalf("error connecting to db: %v", err)
+	}
+	defer db.Close()
+	dbQueries := database.New(db)
+
 	programState := &state{
+		db:  dbQueries,
 		cfg: cfg,
 	}
 
@@ -26,10 +37,11 @@ func main() {
 		registeredCommands: make(map[string]func(*state, command) error),
 	}
 	cmds.register("login", handlerLogin)
+	cmds.register("register", handlerRegister)
 
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: cli <command> [args...]")
-		return
+		log.Fatal("Usage: cli <command> [args...]")
+
 	}
 
 	cmdName := os.Args[1]
