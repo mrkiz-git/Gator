@@ -5,11 +5,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/google/uuid"
 )
 
 type Config struct {
-	DBURL           string `json:"db_url"`
-	CurrentUserName string `json:"current_user_name"`
+	DBURL           string    `json:"db_url"`
+	CurrentUserName string    `json:"current_user_name"`
+	CurrentUserId   uuid.UUID `json:"current_user_id"`
 }
 
 const configFileName = ".gatorconfig.json"
@@ -86,9 +89,10 @@ func LoadConfig() (*Config, error) {
 }
 
 // SetUser updates the CurrentUserName in the configuration and saves it to the file.
-func (c *Config) SetUser(userName string) error {
-	log.Printf("Setting CurrentUserName to %s", userName)
+func (c *Config) SetUser(userName string, userid uuid.UUID) error {
+	log.Printf("Setting CurrentUserName to %s Userid %v", userName, userid)
 	c.CurrentUserName = userName
+	c.CurrentUserId = userid
 
 	if err := writeConfig(c); err != nil {
 		log.Printf("Failed to write config to file: %v", err)

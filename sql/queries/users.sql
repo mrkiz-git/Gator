@@ -15,3 +15,7 @@ where name = $1
 
 -- name: ResetDataBase :one
 DELETE FROM users
+RETURNING *;
+
+-- name: GetUsers :many
+SELECT * FROM users;

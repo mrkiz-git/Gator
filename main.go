@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"mrkiz-git/gator/internal/config"
@@ -13,6 +14,17 @@ import (
 type state struct {
 	db  *database.Queries
 	cfg *config.Config
+}
+
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
+	return func(s *state, cmd command) error {
+		user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
+		if err != nil {
+			return err
+		}
+
+		return handler(s, cmd, user)
+	}
 }
 
 func main() {
@@ -38,6 +50,14 @@ func main() {
 	}
 	cmds.register("login", handlerLogin)
 	cmds.register("register", handlerRegister)
+	cmds.register("reset", handlerRestDB)
+	cmds.register("users", handlerGetUsers)
+	cmds.register("agg", handlFetchRSSFeed)
+	cmds.register("addfeed", middlewareLoggedIn(haddleAddRSSFeed))
+	cmds.register("feeds", handleListFeeds)
+	cmds.register("follow", middlewareLoggedIn(handleFollowFeed))
+	cmds.register("following", middlewareLoggedIn(handleGetFollowedFeeds))
+	cmds.register("unfollow", middlewareLoggedIn(handleUnfollowFeed))
 
 	if len(os.Args) < 2 {
 		log.Fatal("Usage: cli <command> [args...]")
