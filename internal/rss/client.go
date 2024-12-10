@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,22 @@ type RSSItem struct {
 	Link        string `xml:"link"`
 	Description string `xml:"description"`
 	PubDate     string `xml:"pubDate"`
+}
+
+// String implements the fmt.Stringer interface for RSSFeed
+func (r RSSFeed) String() string {
+	var itemsSummary []string
+	for i, item := range r.Channel.Item {
+		itemsSummary = append(itemsSummary, fmt.Sprintf("  [%d] %s (%s)", i+1, item.Title, item.Link))
+	}
+
+	return fmt.Sprintf(
+		"RSSFeed:\nTitle: %s\nLink: %s\nDescription: %s\nItems:\n%s",
+		r.Channel.Title,
+		r.Channel.Link,
+		r.Channel.Description,
+		strings.Join(itemsSummary, "\n"),
+	)
 }
 
 func FetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {

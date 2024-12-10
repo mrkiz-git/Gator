@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"html"
 	"log"
 	"mrkiz-git/gator/internal/database"
 	"mrkiz-git/gator/internal/rss"
@@ -16,23 +16,63 @@ const rssFeedURL = "https://www.wagslane.dev/index.xml"
 
 func handlFetchRSSFeed(s *state, cmd command) error {
 
-	rssFeed, err := rss.FetchFeed(context.Background(), rssFeedURL)
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("wrong number of parameters")
+	}
+
+	time_between_reqs, err := time.ParseDuration(cmd.Args[0])
 	if err != nil {
 		return err
 	}
+	tiker := time.NewTicker(time_between_reqs)
 
-	rssFeed.Channel.Title = html.UnescapeString(rssFeed.Channel.Title)
-	rssFeed.Channel.Description = html.UnescapeString(rssFeed.Channel.Description)
+	log.Printf("Collecting feeds every %v", time_between_reqs)
 
-	// Decode escaped HTML entities for each RSSItem's Title and Description
-	for i, item := range rssFeed.Channel.Item {
-		rssFeed.Channel.Item[i].Title = html.UnescapeString(item.Title)
-		rssFeed.Channel.Item[i].Description = html.UnescapeString(item.Description)
+	for ; ; <-tiker.C {
+		nextFeed, err := s.db.GetNextFeedToFetch(context.Background())
+		if err != nil {
+			return err
+		}
+		log.Printf("*****  Items form RSS FEED: %s saved to DB", nextFeed.Name)
+		rssFeed, err := rss.FetchFeed(context.Background(), nextFeed.Url)
+		if err != nil {
+			return err
+		}
+
+		for _, item := range rssFeed.Channel.Item {
+
+			pubTime, err := time.Parse(time.RFC1123, item.PubDate)
+			if err != nil {
+				return err
+			}
+			postData := database.CreatePostParams{
+				ID:          uuid.New(),
+				FeedID:      nextFeed.ID,
+				Title:       item.Title,
+				Description: item.Description,
+				Url:         item.Link,
+				PublishedAt: pubTime,
+			}
+			insertResponse, err := s.db.CreatePost(context.Background(), postData)
+
+			if err != nil {
+				return err
+			}
+			log.Printf("Post %s inserted the data base", insertResponse.Title)
+		}
+		update_time := sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
+		}
+		prms := database.MarkFeedFetchedParams{LastFetchedAt: update_time, ID: nextFeed.ID}
+
+		_, err = s.db.MarkFeedFetched(context.Background(), prms)
+
+		if err != nil {
+			return err
+		}
+
 	}
-
-	// Print the entire RSSFeed struct after decoding
-	fmt.Printf("Decoded RSSFeed Struct: %+v\n", rssFeed)
-
 	return nil
 }
 
@@ -181,7 +221,7 @@ func handleUnfollowFeed(s *state, cmd command, user database.User) error {
 	return nil
 }
 
-func printFeed(feed database.Feed) {
+func printFeed(feed database.CreateFeedRow) {
 	fmt.Println("Feed Details:")
 	fmt.Printf("**	ID: %s\n", feed.ID)
 
@@ -195,4 +235,26 @@ func printFeed(feed database.Feed) {
 	fmt.Printf("**	URL: %s\n", feed.Url)
 	fmt.Printf("**	Created At: %s\n", feed.CreatedAt.Format(time.RFC3339))
 	fmt.Printf("**	Updated At: %s\n", feed.UpdatedAt.Format(time.RFC3339))
+}
+
+func scrapeFeeds(s *state) {
+
+	feedToScrape, _ := s.db.GetNextFeedToFetch(context.Background())
+
+	update_time := sql.NullTime{Time: time.Now(), Valid: true}
+	markParams := database.MarkFeedFetchedParams{LastFetchedAt: update_time, ID: feedToScrape.ID}
+
+	_, err := s.db.MarkFeedFetched(context.Background(), markParams)
+
+	if err != nil {
+		log.Fatal("failed to updaed feed date")
+	}
+
+	feed, err := rss.FetchFeed(context.Background(), feedToScrape.Url)
+	if err != nil {
+		log.Fatal("failed to scrape feed")
+	}
+
+	fmt.Println(feed)
+
 }

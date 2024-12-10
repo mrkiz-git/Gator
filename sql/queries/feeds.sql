@@ -43,3 +43,13 @@ WHERE id = $1;
 SELECT * FROM feeds
 WHERE URL = $1;
 
+-- name: MarkFeedFetched :one
+UPDATE feeds s SET last_fetched_at = $1
+WHERE id = $2
+RETURNING *;
+
+-- name: GetNextFeedToFetch :one
+SELECT *
+FROM feeds
+ORDER BY last_fetched_at NULLS FIRST
+LIMIT 1;
